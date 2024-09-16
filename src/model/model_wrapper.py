@@ -4,7 +4,11 @@ from typing import Optional, Protocol, runtime_checkable
 
 import moviepy.editor as mpy
 import torch
+import json
 import wandb
+import time
+import math
+import numpy as np
 from einops import pack, rearrange, repeat
 from jaxtyping import Float
 from lightning.pytorch import LightningModule
@@ -104,12 +108,51 @@ class ModelWrapper(LightningModule):
 
         # This is used for testing.
         self.benchmarker = Benchmarker()
+        self.test_step_outputs = {}
+
+    def current_timestamp(self, micro_second=False):
+        t = time.time()
+        if micro_second:
+            return int(t * 1000 * 1000)
+        else:
+            return int(t * 1000)
+        
+    def calculate_psnr(self, img1, img2):
+        # Check if images have the same dimensions
+        if img1.shape != img2.shape:
+            raise ValueError("Images must have the same dimensions")
+        
+        # Create a mask for non-black pixels in image2
+        mask = np.any(img2 != 0, axis=-1) if img2.ndim == 3 else (img2 != 0)
+        
+        # Apply the mask to both images
+        img1_masked = img1[mask]
+        img2_masked = img2[mask]
+        
+        # If all pixels in image2 are black, return infinity
+        if img2_masked.size == 0:
+            return float('inf')
+        
+        # Calculate MSE (Mean Squared Error) for non-black pixels
+        mse = np.mean((img1_masked - img2_masked) ** 2)
+        
+        # If MSE is 0, return infinity (perfect similarity)
+        if mse == 0:
+            return float('inf')
+        
+        # Calculate PSNR
+        max_pixel = 255.0
+        psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
+        
+        return psnr
+
 
     def training_step(self, batch, batch_idx):
         batch: BatchedExample = self.data_shim(batch)
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
+        start_time = self.current_timestamp()
         gaussians = self.encoder(batch["context"], self.global_step, False)
         output = self.decoder.forward(
             gaussians,
@@ -120,6 +163,7 @@ class ModelWrapper(LightningModule):
             (h, w),
             depth_mode=self.train_cfg.depth_mode,
         )
+        end_time = self.current_timestamp()
         target_gt = batch["target"]["image"]
 
         # Compute metrics.
@@ -154,6 +198,13 @@ class ModelWrapper(LightningModule):
     def test_step(self, batch, batch_idx):
         batch: BatchedExample = self.data_shim(batch)
 
+        if f"psnr" not in self.test_step_outputs:
+            self.test_step_outputs[f"psnr"] = []
+        if f"decoder" not in self.test_step_outputs:
+            self.test_step_outputs[f"decoder"] = []
+        if f"encoder" not in self.test_step_outputs:
+            self.test_step_outputs[f"encoder"] = []
+
         b, v, _, h, w = batch["target"]["image"].shape
         assert b == 1
         if batch_idx % 100 == 0:
@@ -161,14 +212,18 @@ class ModelWrapper(LightningModule):
 
         # Render Gaussians.
         with self.benchmarker.time("encoder"):
+            start_time = self.current_timestamp()
             gaussians = self.encoder(
                 batch["context"],
                 self.global_step,
                 deterministic=False,
             )
+            end_time = self.current_timestamp()
+            self.test_step_outputs['encoder'].append((end_time - start_time)/1000.0)
         with self.benchmarker.time("decoder", num_calls=v):
             color = []
             for i in range(0, batch["target"]["far"].shape[1], 32):
+                start_time = self.current_timestamp()
                 output = self.decoder.forward(
                     gaussians,
                     batch["target"]["extrinsics"][:1, i : i + 32],
@@ -177,6 +232,8 @@ class ModelWrapper(LightningModule):
                     batch["target"]["far"][:1, i : i + 32],
                     (h, w),
                 )
+                end_time = self.current_timestamp()
+                self.test_step_outputs['decoder'].append((end_time - start_time) / 1000.0)
                 color.append(output.color)
             color = torch.cat(color, dim=1)
 
@@ -184,8 +241,14 @@ class ModelWrapper(LightningModule):
         (scene,) = batch["scene"]
         name = get_cfg()["wandb"]["name"]
         path = self.test_cfg.output_path / name
+
         for index, color in zip(batch["target"]["index"][0], color[0]):
             save_image(color, path / f"{scene}")
+            # Compute Scores
+            rgb_render = prep_image(color)
+            rgb_gt = prep_image(batch["target"]["image"][0])
+            psnr = self.calculate_psnr(rgb_gt, rgb_render)
+            self.test_step_outputs[f"psnr"].append(psnr)
         # for index, color in zip(batch["target"]["index"][0], color[0]):
         #     save_image(color, path / scene / f"color/{index:0>6}.png")
         # for index, color in zip(
@@ -199,6 +262,20 @@ class ModelWrapper(LightningModule):
         self.benchmarker.dump_memory(
             self.test_cfg.output_path / name / "peak_memory.json"
         )
+
+        saved_scores = {}
+        for metric_name, metric_scores in self.test_step_outputs.items():
+            if len(metric_scores) < 1:
+                continue
+            avg_scores = sum(metric_scores) / len(metric_scores)
+            saved_scores[metric_name] = avg_scores
+            print(metric_name, avg_scores)
+            with (self.test_cfg.output_path / f"scores_{metric_name}_all.json").open("w") as f:
+                json.dump(metric_scores, f)
+            metric_scores.clear()
+
+        with (self.test_cfg.output_path / name / f"scores_all_avg.json").open("w") as f:
+                json.dump(saved_scores, f)
 
     @rank_zero_only
     def validation_step(self, batch, batch_idx):

@@ -11,6 +11,8 @@
 # checkpointing.load=checkpoints/acid.ckpt
 
 python convert_colmap_hs5.py && \
+
+
 rm -rf outputs/test && \
 python3 -m src.main +experiment=7s_scene_fire_n2 \
 mode=test \
