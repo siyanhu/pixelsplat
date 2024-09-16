@@ -11,7 +11,16 @@
 # checkpointing.load=checkpoints/acid.ckpt
 
 python convert_colmap_hs5.py && \
+rm -rf outputs/test && \
+python3 -m src.main +experiment=7s_scene_stairs_n2 \
+mode=test \
+dataset/view_sampler=evaluation \
+dataset.view_sampler.index_path=datasets/7s/n2/scene_fire/test/evaluation.json \
+checkpointing.load=checkpoints/acid.ckpt
 
+python convert_colmap_hs1_neighbour.py && \
+rm -rf outputs/test && \
+bash datasets/7s/n2/scene_stairs/test/command.sh
 
 rm -rf outputs/test && \
 python3 -m src.main +experiment=7s_scene_fire_n2 \

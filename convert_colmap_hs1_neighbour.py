@@ -513,8 +513,7 @@ def generate_command(experiment, checkpoint, mode, index_path, num_context_views
     mode={mode} \\
     dataset/view_sampler=evaluation \\
     dataset.view_sampler.index_path={index_path} \\
-    dataset.view_sampler.num_context_views={num_context_views} \\
-    test.compute_scores={compute_scores}"""
+    dataset.view_sampler.num_context_views={num_context_views}"""
     return command
 
 
@@ -527,8 +526,8 @@ def save_command_to_file(command, filename):
 
 if __name__ == '__main__':
     data_tag = '7s'
-    # scene_tag = 'scene_stairs'
-    scene_tag = 'scene_fire'
+    scene_tag = 'scene_stairs'
+    # scene_tag = 'scene_fire'
 
     # data_tag = 'camb'
     # scene_tag = 'scene_KingsCollege'
@@ -693,6 +692,6 @@ if __name__ == '__main__':
     input_eval_index_path = fio.createPath(fio.sep, ['datasets', data_tag, 'n' + str(sample_num_required), scene_tag, 'test'], "evaluation.json")
     num_context_views = sample_num_required
     compute_score = True
-    command = generate_command(yamlname + '.yaml', "checkpoints/re10k.ckpt", "test", input_eval_index_path, num_context_views, compute_score)
+    command = generate_command(yamlname, "checkpoints/acid.ckpt", "test", input_eval_index_path, num_context_views, compute_score)
     save_command_path = fio.createPath(fio.sep, [save_dir], "command.sh")
     save_command_to_file(command, save_command_path)

@@ -9,6 +9,7 @@ import wandb
 import time
 import math
 import numpy as np
+from PIL import Image
 from einops import pack, rearrange, repeat
 from jaxtyping import Float
 from lightning.pytorch import LightningModule
@@ -117,34 +118,98 @@ class ModelWrapper(LightningModule):
         else:
             return int(t * 1000)
         
-    def calculate_psnr(self, img1, img2):
-        # Check if images have the same dimensions
-        if img1.shape != img2.shape:
-            raise ValueError("Images must have the same dimensions")
-        
+    def calculate_psnr(self, img1, img2, combo_path=''):
+        # Ensure images have the same height
+        if img1.shape[0] != img2.shape[0]:
+            # Resize the smaller image to match the height of the larger one
+            if img1.shape[0] > img2.shape[0]:
+                scale_factor = img1.shape[0] / img2.shape[0]
+                new_width = int(img2.shape[1] * scale_factor)
+                img2 = np.array(Image.fromarray(img2).resize((new_width, img1.shape[0]), Image.LANCZOS))
+            else:
+                scale_factor = img2.shape[0] / img1.shape[0]
+                new_width = int(img1.shape[1] * scale_factor)
+                img1 = np.array(Image.fromarray(img1).resize((new_width, img2.shape[0]), Image.LANCZOS))
+
+        # Convert to float64 for calculations
+        img1 = img1.astype(np.float64)
+        img2 = img2.astype(np.float64)
+
         # Create a mask for non-black pixels in image2
         mask = np.any(img2 != 0, axis=-1) if img2.ndim == 3 else (img2 != 0)
-        
-        # Apply the mask to both images
-        img1_masked = img1[mask]
-        img2_masked = img2[mask]
-        
+
         # If all pixels in image2 are black, return infinity
-        if img2_masked.size == 0:
+        if not np.any(mask):
             return float('inf')
-        
+
         # Calculate MSE (Mean Squared Error) for non-black pixels
-        mse = np.mean((img1_masked - img2_masked) ** 2)
-        
+        mse = np.mean((img1[mask] - img2[mask]) ** 2)
+
         # If MSE is 0, return infinity (perfect similarity)
         if mse == 0:
-            return float('inf')
-        
-        # Calculate PSNR
-        max_pixel = 255.0
-        psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
-        
+            psnr = float('inf')
+        else:
+            # Calculate PSNR
+            max_pixel = 255.0
+            psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
+        if (len(combo_path.parts) > 0):
+            # Create a new image with both original images side by side
+            total_width = img1.shape[1] + img2.shape[1]
+            max_height = max(img1.shape[0], img2.shape[0])
+            combined_image = np.zeros((max_height, total_width, 3), dtype=np.uint8)
+
+            # Paste img1 on the left side
+            combined_image[:img1.shape[0], :img1.shape[1]] = img1
+
+            # Paste img2 on the right side
+            combined_image[:img2.shape[0], img1.shape[1]:] = img2
+
+            # Convert the combined image to PIL Image and save
+            Image.fromarray(combined_image).save(combo_path)
+
         return psnr
+
+        # # Check if images have the same dimensions
+        # if img1.shape != img2.shape:
+        #     raise ValueError("Images must have the same dimensions")
+        
+        # # Create a mask for non-black pixels in image2
+        # mask = np.any(img2 != 0, axis=-1) if img2.ndim == 3 else (img2 != 0)
+        
+        # # Apply the mask to both images
+        # img1_masked = img1[mask]
+        # img2_masked = img2[mask]
+        
+        # # If all pixels in image2 are black, return infinity
+        # if img2_masked.size == 0:
+        #     return float('inf')
+        
+        # # Calculate MSE (Mean Squared Error) for non-black pixels
+        # mse = np.mean((img1_masked - img2_masked) ** 2)
+        
+        # # If MSE is 0, return infinity (perfect similarity)
+        # if mse == 0:
+        #     return float('inf')
+        
+        # # Calculate PSNR
+        # max_pixel = 255.0
+        # psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
+
+        # if len(combo_path.parts) > 0:
+        #     total_width = img1.shape[1] + img2.shape[1]
+        #     max_height = max(img1.shape[0], img2.shape[0])
+        #     combined_image = Image.new('RGB', (total_width, max_height))
+
+        #     # Paste image1 on the left side
+        #     combined_image.paste(img1, (0, 0))
+
+        #     # Paste image2 on the right side
+        #     combined_image.paste(img2, (img1.shape[1], 0))
+
+        #     # Save the combined image
+        #     combined_image.save(combo_path)
+        
+        # return psnr
 
 
     def training_step(self, batch, batch_idx):
@@ -247,7 +312,8 @@ class ModelWrapper(LightningModule):
             # Compute Scores
             rgb_render = prep_image(color)
             rgb_gt = prep_image(batch["target"]["image"][0])
-            psnr = self.calculate_psnr(rgb_gt, rgb_render)
+            gt_scene = scene.replace('.color.png', '.color.combo.png')
+            psnr = self.calculate_psnr(rgb_gt, rgb_render, path / f"{gt_scene}")
             self.test_step_outputs[f"psnr"].append(psnr)
         # for index, color in zip(batch["target"]["index"][0], color[0]):
         #     save_image(color, path / scene / f"color/{index:0>6}.png")
@@ -270,7 +336,7 @@ class ModelWrapper(LightningModule):
             avg_scores = sum(metric_scores) / len(metric_scores)
             saved_scores[metric_name] = avg_scores
             print(metric_name, avg_scores)
-            with (self.test_cfg.output_path / f"scores_{metric_name}_all.json").open("w") as f:
+            with (self.test_cfg.output_path / name / f"scores_{metric_name}_all.json").open("w") as f:
                 json.dump(metric_scores, f)
             metric_scores.clear()
 
