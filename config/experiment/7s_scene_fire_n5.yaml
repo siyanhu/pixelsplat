@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - override /dataset: acid
+  - override /model/encoder: epipolar
+  - override /model/encoder/backbone: dino
+  - override /loss: [mse, lpips]
+
+wandb:
+  name: 7s/scene_fire
+  tags:
+    - 7s/scene_fire
+    - 256x256
+
+dataset:
+  image_shape: [256, 256]
+  roots:
+    - datasets/7s/n5/scene_fire
+
+data_loader:
+  train:
+    batch_size: 7
+
+trainer:
+  max_steps: 300_001

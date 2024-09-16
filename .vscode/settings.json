@@ -7,18 +7,17 @@
     ],
     // Hide non-code files.
     "files.exclude": {
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/CVS": true,
-        "**/.DS_Store": true,
-        "**/Thumbs.db": true,
         "**/__pycache__": true,
-        "**/venv": true,
-        "**/lightning_logs": true,
-        "**/dataset_cache": true,
+        "**/.DS_Store": true,
+        "**/.git": true,
+        "**/.hg": true,
         "**/.ruff_cache": true,
-        "**/datasets": true,
+        "**/.svn": true,
+        "**/CVS": true,
+        "**/dataset_cache": true,
+        "**/lightning_logs": true,
+        "**/Thumbs.db": true,
+        "**/venv": true
     },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
@@ -26,13 +25,12 @@
     "debug.focusWindowOnBreak": false,
     "files.watcherExclude": {
         "**/.git/**": true,
+        "**/.ruff_cache/**": true,
         "**/checkpoints/**": true,
+        "**/dataset_cache/**": true,
         "**/datasets/**": true,
         "**/lightning_logs/**": true,
         "**/outputs/**": true,
-        "**/dataset_cache/**": true,
-        "**/.ruff_cache/**": true,
-        "**/venv/**": true,
-        "**/datasets": true,
+        "**/venv/**": true
     }
 }

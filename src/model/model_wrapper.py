@@ -185,11 +185,13 @@ class ModelWrapper(LightningModule):
         name = get_cfg()["wandb"]["name"]
         path = self.test_cfg.output_path / name
         for index, color in zip(batch["target"]["index"][0], color[0]):
-            save_image(color, path / scene / f"color/{index:0>6}.png")
-        for index, color in zip(
-            batch["context"]["index"][0], batch["context"]["image"][0]
-        ):
-            save_image(color, path / scene / f"context/{index:0>6}.png")
+            save_image(color, path / f"{scene}")
+        # for index, color in zip(batch["target"]["index"][0], color[0]):
+        #     save_image(color, path / scene / f"color/{index:0>6}.png")
+        # for index, color in zip(
+        #     batch["context"]["index"][0], batch["context"]["image"][0]
+        # ):
+        #     save_image(color, path / scene / f"context/{index:0>6}.png")
 
     def on_test_end(self) -> None:
         name = get_cfg()["wandb"]["name"]

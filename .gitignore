@@ -160,7 +160,10 @@ cython_debug/
 #.idea/
 
 /datasets
+/datasets_raw
 /dataset_cache
+/datasets_pairs
+/datasets_resize
 
 # Outputs
 /outputs
