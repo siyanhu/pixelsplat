@@ -2,8 +2,8 @@ import root_file_io as fio
 
 from PIL import Image
 import io
+import re
 import copy
-import random
 import numpy as np
 import subprocess
 from collections import defaultdict
@@ -395,13 +395,6 @@ def calculate_file_sizes(file_paths):
     return total_size, errors
 
 
-def random_sampling(lst, n):
-    if n >= len(lst):
-        return lst.copy()
-    else:
-        return random.sample(lst, n)
-    
-
 def parse_pairs_file(filename, data_dir, n=-1):
     pairs_path_dict = {}
     pairs_label_dict = {}
@@ -426,11 +419,23 @@ def parse_pairs_file(filename, data_dir, n=-1):
             #     continue
             pairs_label_dict[key].append(value)
 
+    pairs_label_result = {}
     for key, value in pairs_label_dict.items():
-        new_value = random_sampling(value, n)
-        pairs_label_dict[key] = new_value
-            
-    return pairs_path_dict, pairs_label_dict
+        # new_value = [value[0], value[-1]]
+
+        most_similarity = value[0]
+        number = int(re.search(r'frame-0*(\d+)', most_similarity).group(1))
+        next_= most_similarity.replace(str(number), str(number+1))
+        last_= most_similarity.replace(str(number), str(number-1))
+        if next_ not in pairs_path_dict:
+            continue
+        if last_ not in pairs_path_dict:
+            continue
+        new_value = [last_, next_]
+
+        pairs_label_result[key] = new_value
+        
+    return pairs_path_dict, pairs_label_result
 
 
 def process_scene(data_dir, pair_path, n):
@@ -508,8 +513,7 @@ def generate_command(experiment, checkpoint, mode, index_path, num_context_views
     checkpointing.load={checkpoint} \\
     mode={mode} \\
     dataset/view_sampler=evaluation \\
-    dataset.view_sampler.index_path={index_path} \\
-    dataset.view_sampler.num_context_views={num_context_views}"""
+    dataset.view_sampler.index_path={index_path}"""
     return command
 
 
@@ -529,7 +533,7 @@ if __name__ == '__main__':
     # scene_tag = 'scene_KingsCollege'
     
     this_time = fio.get_current_timestamp("%Y_%m_%d")
-    sample_num_required = 5
+    sample_num_required = 2
 
     scene_data_dir = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_raw', data_tag, scene_tag])
     scene_pair_path = fio.createPath(fio.sep, [fio.getParentDir(), 'datasets_pairs', data_tag, scene_tag], 'pairs-query-netvlad10.txt')
@@ -663,7 +667,6 @@ if __name__ == '__main__':
 
         if chunk_size >= TARGET_BYTES_PER_CHUNK:
             save_chunk()
-        break
 
     if chunk_size > 0:
         save_chunk()
